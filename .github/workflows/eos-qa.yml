@@ -1,0 +1,59 @@
+name: Verificar Duelo Epic no Windows
+on:
+  workflow_dispatch:
+    inputs:
+      invite:
+        description: Código do anfitrião de teste
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  eos-guest:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    env:
+      INVITE: ${{ inputs.invite }}
+      EOS_TEST_CONFIG: ${{ secrets.LINHA_ZERO_EOS_QA_CONFIG }}
+    steps:
+      - name: Instalar a build de teste
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:INVITE -cnotmatch '^LZE1\.[0-9a-f]{32}\.[0-9a-f]{24}$') { throw 'Código de teste inválido.' }
+          if (!$env:EOS_TEST_CONFIG) { throw 'Configuração de teste indisponível.' }
+          $package = Join-Path $env:RUNNER_TEMP 'Linha.Zero.Epic.QA.zip'
+          $packageUrl = 'https://github.com/Murillou4/linha-zero-downloads/releases/download/linha-zero-eos-qa/Linha.Zero.Epic.QA.zip'
+          Invoke-WebRequest -Uri $packageUrl -OutFile $package
+          Expand-Archive -LiteralPath $package -DestinationPath (Join-Path $env:RUNNER_TEMP 'eos-duel')
+      - name: Entrar pelo EOS e aguardar a rodada
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'eos-duel'
+          $clientConfig = Join-Path $env:RUNNER_TEMP 'linha-zero-epic-client.cfg'
+          $log = Join-Path $root 'guest.log'
+          [IO.File]::WriteAllText($clientConfig, $env:EOS_TEST_CONFIG, [Text.UTF8Encoding]::new($false))
+          $env:LZ_EOS_CLIENT_CONFIG = $clientConfig
+          $env:EOS_TEST_CONFIG = ''
+          $argv = @('--headless', '--log-file', ('"{0}"' -f $log), '--', ('--auto-epic-join=' + $env:INVITE))
+          $process = Start-Process -FilePath (Join-Path $root 'linha-zero.exe') -ArgumentList $argv -WindowStyle Hidden -PassThru
+          try {
+            $stop = [DateTime]::UtcNow.AddSeconds(100)
+            $observed = ''
+            do {
+              Start-Sleep -Milliseconds 750
+              if (Test-Path -LiteralPath $log) {
+                $observed = Get-Content -LiteralPath $log -Raw
+              }
+              if ($observed -match 'ROUND_LIVE duel players=2') { break }
+              if ($process.HasExited) { break }
+            } while ([DateTime]::UtcNow -lt $stop)
+            $observed -replace '(LZE1)\.[a-fA-F0-9.]+', '$1.[convite omitido]'
+            if ($observed -notmatch 'JOINED duel .* 2 ' -or $observed -notmatch 'ROUND_LIVE duel players=2' -or $observed -match 'SCRIPT ERROR') {
+              throw 'O segundo PC não chegou a uma rodada ativa.'
+            }
+          } finally {
+            if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
+            if (Test-Path -LiteralPath $clientConfig) { Remove-Item -LiteralPath $clientConfig }
+          }

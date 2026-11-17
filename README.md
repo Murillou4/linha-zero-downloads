@@ -1,6 +1,6 @@
 # CODE / CHAOS — Linha Zero
 
-[Baixar Linha Zero para Windows](https://github.com/Murillou4/linha-zero-downloads/releases/download/linha-zero-stable-v1.0.0/Linha.Zero.Windows.zip)
+[Baixar Linha Zero para Windows](https://github.com/Murillou4/linha-zero-downloads/releases/latest/download/Linha.Zero.Windows.zip)
 
 1. Extraia todos os arquivos do ZIP para uma pasta sua.
 2. Abra **Jogar Linha Zero.exe**.
